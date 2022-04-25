@@ -1,8 +1,19 @@
-# Bandits
-Implementation of different bandits algorithms. Experiment run script is located in `/scripts`
 
 [Sutton & Barto RL Book]: http://incompleteideas.net/book/RLbook2020.pdf
 [Algorithms]: https://arxiv.org/pdf/1402.6028.pdf
+
+# Bandits
+Implementation of different bandits algorithms in policies operating in a k-armed test bed, following the implementation in [Sutton & Barto RL Book]. 
+
+<img width="810" alt="Screen Shot 2022-04-25 at 1 51 36 AM" src="https://user-images.githubusercontent.com/3085599/165035548-95a25c07-6f4d-40ec-bad4-6e2bd51d6a78.png">
+
+Two variants of the test-bed have been implemented
+* Stationary: each bandit has fixed mean / std dev.
+* Non-stationary: each bandit's mean follows a (normal) random walk 
+
+
+
+Experiment run script is located in `/scripts`
 
 
 ## Non-assocative Algorithms
