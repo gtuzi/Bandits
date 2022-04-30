@@ -118,6 +118,7 @@ ___Algorithm 2___  - Thompson Sampling - is specialized to the case of a beta-Be
 <img width="1134" alt="Screen Shot 2022-04-30 at 4 43 52 PM" src="https://user-images.githubusercontent.com/3085599/166123621-c67671d7-2178-4c98-8ecb-ac3179621c76.png">
 
 Refer to [Thompson Sampling Tutorial] for details.
+_Note:_ for the TS experiments, a Bernoulli test bed was used, with different success rates for each arm.
 
 * Experiment 11: GreedyBernoulli vs. Bernoulli Thompson Sampling on stationary Bernoulli testbed
 * Experiment 12: Bernoulli Thompson Sampling over a stationary and non-stationary Bernoulli testbed
