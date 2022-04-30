@@ -238,11 +238,12 @@ class BetaDistribution:
     """
         Ref: https://web.stanford.edu/~bvr/pubs/TS_Tutorial.pdf
     """
-    def __init__(self, alpha, beta):
+
+    def __init__(self, alpha: float, beta: float):
         self.alpha = alpha
         self.beta = beta
 
-    def update(self, reward):
+    def update_posterior(self, reward: float):
         """
             Update Beta function parameters according to
             (alpha, beta) += (reward, 1 - reward) (see ref, page 14)
@@ -251,28 +252,89 @@ class BetaDistribution:
         self.alpha, self.beta = self.alpha + reward, self.beta + 1 - reward
 
     def sample(self, n_samples: int = 1) -> List[float]:
-        return np.random.beta(a = self.alpha, b = self.beta, size=n_samples).tolist()
+        '''
+            Sample from Beta Distribution
+        :param n_samples: number of samples
+        :return: samples as list
+        '''
+        return np.random.beta(a=self.alpha, b=self.beta, size=(n_samples,)).tolist()
+
+    @property
+    def mean(self) -> float:
+        return self.alpha / (self.alpha + self.beta)
 
 
-class BrnoulliThompsonSampling(Policy):
+class BernoulliPolicy(Policy):
+    """
+        Ref: https://web.stanford.edu/~bvr/pubs/TS_Tutorial.pdf
+    """
+
     def __init__(
             self,
             n_actions: int,
             initial_alpha: float = 1.,
-            initial_beta: float = 1.):
-        super(BrnoulliThompsonSampling, self).__init__('thompson_sampling')
-        assert n_actions > 0
+            initial_beta: float = 1.,
+            name: str = 'bernoulli'):
+        super(BernoulliPolicy, self).__init__(name)
+        assert n_actions > 0, name
         self.distributions = [BetaDistribution(alpha=initial_alpha, beta=initial_beta) for _ in range(n_actions)]
         self.step_count = 0
-
-    def __call__(self, step: int, **kwargs) -> int:
-        """ Perform action a~pi(n)"""
-        samples = [dist.sample(1) for dist in self.distributions]
-        return int(np.argmax(samples))
 
     def step(self, step: int, action: int, reward: float):
         """ Update all parameters, including value function """
         self.step_count += 1
         eps = 1e-5
-        assert ((-eps < reward < eps) or (1-eps < reward < 1 + eps)), 'Invalid reward value.'
-        self.distributions[action].update(reward)
+        assert ((-eps < reward < eps) or (1 - eps < reward < 1 + eps)), 'Invalid reward value.'
+        self.distributions[action].update_posterior(reward)
+
+
+class BernoulliThompsonSampling(BernoulliPolicy):
+    """
+        Algorithm 2 in reference
+
+        Ref: https://web.stanford.edu/~bvr/pubs/TS_Tutorial.pdf
+    """
+
+    def __init__(
+            self,
+            n_actions: int,
+            initial_alpha: float = 1.,
+            initial_beta: float = 1.):
+        super(BernoulliThompsonSampling, self).__init__(
+            n_actions=n_actions,
+            initial_alpha=initial_alpha,
+            initial_beta=initial_beta,
+            name='bernoulli_thompson_sampling')
+
+    def __call__(self, step: int, **kwargs) -> int:
+        """ Perform action a~pi(n)"""
+        # We are sampling from the distribution of our estimate of what the "true" probability - in the environment -
+        # of generating a successful reward.
+        estimated_success_probabilities = [dist.sample(1) for dist in self.distributions]
+        return int(np.argmax(estimated_success_probabilities))
+
+
+class BernoulliGreedy(BernoulliPolicy):
+    """
+        Algorithm 1 in reference
+
+        Ref: https://web.stanford.edu/~bvr/pubs/TS_Tutorial.pdf
+    """
+
+    def __init__(
+            self,
+            n_actions: int,
+            initial_alpha: float = 1.,
+            initial_beta: float = 1.):
+        super(BernoulliGreedy, self).__init__(
+            n_actions=n_actions,
+            initial_alpha=initial_alpha,
+            initial_beta=initial_beta,
+            name='bernoulli_greedy')
+
+    def __call__(self, step: int, **kwargs) -> int:
+        """ Perform action a~pi(n)"""
+        # These are our expectations (E[theta]) of what the bernoulli "true" probability - in the environment -
+        # of generating a successful reward.
+        estimated_success_probabilities = [dist.mean for dist in self.distributions]
+        return int(np.argmax(estimated_success_probabilities))

@@ -5,16 +5,46 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from joblib import Parallel, delayed
 
-from tools.coefficients import ConstantCoefficient, CosineDecayCoefficient
-from policies.nonassocative_policies import Policy, EpsGreedyPolicy, UCB1Policy, NaiivePreferencePolicy, \
-    SoftmaxExplorationPolicy
-from value_functions.nonassocative_value_functions import QMonteCarlo, QCoefficientMovingAverage
-from environments.continuous_reward_testbed import TestBed
+from environments.testbed import TestBed
 from utils import mk_clear_dir
 
+from environments.continuous_reward_testbed import ContinuousValueRewardTestBed
+from environments.binary_reward_testbed import BinaryValueRewardTestBed
 
-def get_test_bed(reward_means, reward_randomness_scale, stationary=False):
-    return TestBed(reward_means=reward_means, reward_randomness_scales=reward_randomness_scale, stationary=stationary)
+from tools.coefficients import (
+    ConstantCoefficient,
+    CosineDecayCoefficient)
+
+from value_functions.nonassocative_value_functions import (
+    QMonteCarlo,
+    QCoefficientMovingAverage)
+
+from policies.nonassocative_policies import (
+    Policy,
+    EpsGreedyPolicy,
+    UCB1Policy,
+    NaiivePreferencePolicy,
+    SoftmaxExplorationPolicy,
+    BernoulliPolicy,
+    BernoulliGreedy,
+    BernoulliThompsonSampling)
+
+
+def get_cont_reward_test_bed(reward_means, reward_randomness_scale, stationary=False):
+    return ContinuousValueRewardTestBed(
+        reward_means=reward_means,
+        reward_randomness_scales=reward_randomness_scale,
+        stationary=stationary)
+
+
+def get_binary_reward_test_bed(
+        success_rates: List,
+        reward_randomness_scales: List = [],
+        stationary: bool = True):
+    return BinaryValueRewardTestBed(
+        success_rates=success_rates,
+        reward_randomness_scales=reward_randomness_scales,
+        stationary=stationary)
 
 
 def simulate_epsilon_greedy(
@@ -53,10 +83,9 @@ def simulate_ucb(
         n_trials: int,
         n_steps: int,
         desc='') -> Tuple[Dict, Dict, Dict, Dict]:
-
     rewards = {str(c): [list() for _ in range(n_trials)] for c in uncertainty_coefficients}
     cummulative_best_means = {str(c): [[0.] for _ in range(n_trials)] for c in uncertainty_coefficients}
-    cummulative_rewards = {str(c): [[0.] for _ in range(n_trials)]for c in uncertainty_coefficients}
+    cummulative_rewards = {str(c): [[0.] for _ in range(n_trials)] for c in uncertainty_coefficients}
     best_arms = {str(c): [list() for _ in range(n_trials)] for c in uncertainty_coefficients}
 
     for c in uncertainty_coefficients:
@@ -76,6 +105,32 @@ def simulate_ucb(
     return rewards, cummulative_rewards, cummulative_best_means, best_arms
 
 
+def simulate_bernoulli_testbed(
+        test_bed_constructor: Callable[[], TestBed],
+        policy_constructor: Callable[[], BernoulliPolicy],):
+
+    sentinel = 'none'
+    rewards = {sentinel: [list() for _ in range(n_trials)]}
+    cummulative_best_means = {sentinel: [[0.] for _ in range(n_trials)]}
+    cummulative_rewards = {sentinel: [[0.] for _ in range(n_trials)]}
+    best_arms = {sentinel: [list() for _ in range(n_trials)]}
+
+    for trial in tqdm(range(n_trials), desc=f'Bernoulli TestBed'):
+        policy = policy_constructor()
+        test_bed = test_bed_constructor()
+        for step in range(1, n_steps + 1):
+            a = policy(step=step)
+            r = test_bed(action=a)
+            policy.step(step=step, action=a, reward=r)
+            rewards[sentinel][trial].append(r)
+            cummulative_best_means[sentinel][trial].append(
+                test_bed.best_mean + cummulative_best_means[sentinel][trial][-1])
+            cummulative_rewards[sentinel][trial].append(r + cummulative_rewards[sentinel][trial][-1])
+            best_arms[sentinel][trial] = test_bed.best_arm
+
+    return rewards, cummulative_rewards, cummulative_best_means, best_arms
+
+
 def simulate_paramterized_policy(
         test_bed_constructor: Callable[[], TestBed],
         policy_constructor: Callable[[float, ], Policy],
@@ -83,7 +138,6 @@ def simulate_paramterized_policy(
         n_trials: int,
         n_steps: int,
         desc='') -> Tuple[Dict, Dict, Dict, Dict]:
-
     rewards = {str(c): [list() for _ in range(n_trials)] for c in varying_parameters}
     cummulative_best_means = {str(c): [[0.] for _ in range(n_trials)] for c in varying_parameters}
     cummulative_rewards = {str(c): [[0.] for _ in range(n_trials)] for c in varying_parameters}
@@ -106,6 +160,9 @@ def simulate_paramterized_policy(
     return rewards, cummulative_rewards, cummulative_best_means, best_arms
 
 
+
+######## Continuous valued rewards ###############
+
 def experiment_1(n_steps, n_trials):
     """
         For a fixed action-value (E[R | a]) for each bandit, compare the performance of epsilon greedy
@@ -120,7 +177,7 @@ def experiment_1(n_steps, n_trials):
     reward_randomness_scale = 0.00
     plot_root_name = 'experiment_1'
 
-    test_bed_constructor = lambda: get_test_bed(
+    test_bed_constructor = lambda: get_cont_reward_test_bed(
         reward_means=np.random.normal(0., 1., size=n_bandits).tolist(),
         reward_randomness_scale=[reward_randomness_scale] * n_bandits,
         stationary=True)
@@ -144,7 +201,7 @@ def experiment_1(n_steps, n_trials):
             np.mean([rewards[str(eps)][trial][step] for trial in range(n_trials)]) for step in range(n_steps)]
 
         regret_averages[str(eps)] = [
-            np.mean([(cummulative_best_means[str(eps)][trial][step] - cummulative_rewards[str(eps)][trial][step])/step
+            np.mean([(cummulative_best_means[str(eps)][trial][step] - cummulative_rewards[str(eps)][trial][step]) / step
                      for trial in range(n_trials)])
             for step in range(1, n_steps + 1)]
 
@@ -196,7 +253,7 @@ def experiment_2(n_steps, n_trials):
     plot_root_name = 'experiment_2'
 
     for reward_randomness_scale in reward_randomness_scales:
-        test_bed_constructor = lambda: get_test_bed(
+        test_bed_constructor = lambda: get_cont_reward_test_bed(
             reward_means=np.random.normal(0., 1., size=n_bandits).tolist(),
             reward_randomness_scale=[reward_randomness_scale] * n_bandits,
             stationary=True)
@@ -213,7 +270,8 @@ def experiment_2(n_steps, n_trials):
             n_steps=n_steps,
             desc='Experiment 2')
 
-        reward_averages = [np.mean([rewards[str(epsilon)][trial][step] for trial in range(n_trials)]) for step in range(n_steps)]
+        reward_averages = [np.mean([rewards[str(epsilon)][trial][step] for trial in range(n_trials)]) for step in
+                           range(n_steps)]
         rewards_avgs_collector[reward_randomness_scale] = reward_averages
 
         regret_averages = [
@@ -222,7 +280,6 @@ def experiment_2(n_steps, n_trials):
             for step in range(1, n_steps + 1)]
 
         regret_avgs_collector[reward_randomness_scale] = regret_averages
-
 
     d = os.path.join(os.getcwd(), 'plots')
     _ = mk_clear_dir(d, False)
@@ -273,7 +330,7 @@ def experiment_3(n_steps, n_trials):
     reward_randomness_scale = 1.0
     plot_root_name = 'experiment_3'
 
-    test_bed_constructor = lambda: get_test_bed(
+    test_bed_constructor = lambda: get_cont_reward_test_bed(
         reward_means=np.random.normal(0., 1., size=n_bandits).tolist(),
         reward_randomness_scale=[reward_randomness_scale] * n_bandits,
         stationary=True)
@@ -378,7 +435,7 @@ def experiment_4(n_steps, n_trials):
     reward_randomness_scale = 1.0
     plot_root_text = 'experiment_4'
 
-    test_bed_constructor = lambda: get_test_bed(
+    test_bed_constructor = lambda: get_cont_reward_test_bed(
         reward_means=np.random.normal(0., 1., size=n_bandits).tolist(),
         reward_randomness_scale=[reward_randomness_scale] * n_bandits,
         stationary=False)
@@ -427,7 +484,6 @@ def experiment_4(n_steps, n_trials):
             np.mean([cummulative_best_means_cc[str(eps)][trial][step] - cummulative_rewards_cc[str(eps)][trial][step]
                      for trial in range(n_trials)])
             for step in range(1, n_steps + 1)]
-
 
     d = os.path.join(os.getcwd(), 'plots')
     _ = mk_clear_dir(d, False)
@@ -483,7 +539,7 @@ def experiment_5(n_steps, n_trials):
     reward_randomness_scale = 1.0
     plot_root_text = 'experiment_5'
 
-    test_bed_constructor = lambda: get_test_bed(
+    test_bed_constructor = lambda: get_cont_reward_test_bed(
         reward_means=np.random.normal(0., 1., size=n_bandits).tolist(),
         reward_randomness_scale=[reward_randomness_scale] * n_bandits,
         stationary=True)
@@ -493,24 +549,24 @@ def experiment_5(n_steps, n_trials):
 
     rewards_pessimistic, cummulative_rewards_pessimistic, cummulative_best_means_pessimistic, best_arms_pessimistic = \
         simulate_epsilon_greedy(
-        test_bed_constructor=test_bed_constructor,
-        policy_constructor=policy_constructor,
-        epsilons=epsilons,
-        n_trials=n_trials,
-        n_steps=n_steps,
-        desc='Experiment 5 - Pessimistic')
+            test_bed_constructor=test_bed_constructor,
+            policy_constructor=policy_constructor,
+            epsilons=epsilons,
+            n_trials=n_trials,
+            n_steps=n_steps,
+            desc='Experiment 5 - Pessimistic')
 
     q_constructor = lambda: QMonteCarlo(n_actions=n_bandits, initial_action_value=Q0_optimistic)
     policy_constructor = lambda _e: EpsGreedyPolicy(q=q_constructor(), eps=_e)
 
     rewards_optimisitic, cummulative_rewards_optimisitic, cummulative_best_means_optimisitic, best_arms_optimisitic = \
         simulate_epsilon_greedy(
-        test_bed_constructor=test_bed_constructor,
-        policy_constructor=policy_constructor,
-        epsilons=epsilons,
-        n_trials=n_trials,
-        n_steps=n_steps,
-        desc='Experiment 5 - Optimistic')
+            test_bed_constructor=test_bed_constructor,
+            policy_constructor=policy_constructor,
+            epsilons=epsilons,
+            n_trials=n_trials,
+            n_steps=n_steps,
+            desc='Experiment 5 - Optimistic')
 
     rewards_avgs_pessimistic = dict()
     rewards_avgs_optimistic = dict()
@@ -537,7 +593,6 @@ def experiment_5(n_steps, n_trials):
                      cummulative_rewards_optimisitic[str(epsilon)][trial][step]
                      for trial in range(n_trials)])
             for step in range(1, n_steps + 1)]
-
 
     d = os.path.join(os.getcwd(), 'plots')
     _ = mk_clear_dir(d, False)
@@ -593,7 +648,7 @@ def experiment_6(n_steps, n_trials):
     reward_randomness_scale = 1.0
     plot_root_text = 'experiment_6'
 
-    test_bed_constructor = lambda: get_test_bed(
+    test_bed_constructor = lambda: get_cont_reward_test_bed(
         reward_means=np.random.normal(0., 1., size=n_bandits).tolist(),
         reward_randomness_scale=[reward_randomness_scale] * n_bandits,
         stationary=True)
@@ -603,12 +658,12 @@ def experiment_6(n_steps, n_trials):
 
     rewards_eps_greedy, cummulative_rewards_eps_greedy, cummulative_best_means_eps_greedy, best_arms_eps_greedy = \
         simulate_epsilon_greedy(
-        test_bed_constructor=test_bed_constructor,
-        policy_constructor=policy_constructor,
-        epsilons=[epsilon],
-        n_trials=n_trials,
-        n_steps=n_steps,
-        desc='Experiment 6 - Eps-Greedy')
+            test_bed_constructor=test_bed_constructor,
+            policy_constructor=policy_constructor,
+            epsilons=[epsilon],
+            n_trials=n_trials,
+            n_steps=n_steps,
+            desc='Experiment 6 - Eps-Greedy')
 
     rewards_avgs_eps_greedy = [
         np.mean([rewards_eps_greedy[str(epsilon)][trial][step] for trial in range(n_trials)])
@@ -640,7 +695,6 @@ def experiment_6(n_steps, n_trials):
                  cummulative_rewards_ucb[str(c)][trial][step]
                  for trial in range(n_trials)])
         for step in range(1, n_steps + 1)]
-
 
     d = os.path.join(os.getcwd(), 'plots')
     _ = mk_clear_dir(d, False)
@@ -688,7 +742,7 @@ def experiment_7(n_steps, n_trials):
     constant_temperatures = [0.1, 0.5, 1.0, 2.0, 4.0]
     plot_root_name = 'experiment_7'
 
-    test_bed_constructor = lambda: get_test_bed(
+    test_bed_constructor = lambda: get_cont_reward_test_bed(
         reward_means=np.random.normal(0., 1., size=n_bandits).tolist(),
         reward_randomness_scale=[reward_randomness_scale] * n_bandits,
         stationary=True)
@@ -768,7 +822,7 @@ def experiment_8(n_steps, n_trials):
     constant_temperature = 0.1
     plot_root_text = 'experiment_8'
 
-    test_bed_constructor = lambda: get_test_bed(
+    test_bed_constructor = lambda: get_cont_reward_test_bed(
         reward_means=np.random.normal(0., 1., size=n_bandits).tolist(),
         reward_randomness_scale=[reward_randomness_scale] * n_bandits,
         stationary=True)
@@ -845,7 +899,7 @@ def experiment_9(n_steps, n_trials):
     temperature = 1.0
     plot_root_text = 'experiment_9'
 
-    test_bed_constructor = lambda: get_test_bed(
+    test_bed_constructor = lambda: get_cont_reward_test_bed(
         reward_means=np.random.normal(0., 1., size=n_bandits).tolist(),
         reward_randomness_scale=[reward_randomness_scale] * n_bandits,
         stationary=True)
@@ -868,11 +922,12 @@ def experiment_9(n_steps, n_trials):
         desc='Experiment 9 - decaying temperature')
 
     rewards_avgs_dt = [np.mean([rewards_dt[str(temperature)][trial][step] for trial in range(n_trials)])
-                               for step in range(n_steps)]
+                       for step in range(n_steps)]
 
     regret_averages_dt = [
         np.mean([
-            cummulative_best_means_dt[str(temperature)][trial][step] - cummulative_rewards_dt[str(temperature)][trial][step]
+            cummulative_best_means_dt[str(temperature)][trial][step] - cummulative_rewards_dt[str(temperature)][trial][
+                step]
             for trial in range(n_trials)])
         for step in range(1, n_steps + 1)]
 
@@ -894,7 +949,7 @@ def experiment_9(n_steps, n_trials):
         desc='Experiment 9 - constant temperature')
 
     rewards_avgs_ct = [np.mean([rewards_ct[str(temperature)][trial][step] for trial in range(n_trials)])
-                               for step in range(n_steps)]
+                       for step in range(n_steps)]
 
     regret_averages_ct = [
         np.mean([
@@ -950,7 +1005,7 @@ def experiment_10(n_steps, n_trials):
     temperature = 1.0
     plot_root_text = 'experiment_10'
 
-    test_bed_constructor = lambda: get_test_bed(
+    test_bed_constructor = lambda: get_cont_reward_test_bed(
         reward_means=np.random.normal(4.0, 1.0, size=n_bandits).tolist(),
         reward_randomness_scale=[reward_randomness_scale] * n_bandits,
         stationary=True)
@@ -1010,7 +1065,6 @@ def experiment_10(n_steps, n_trials):
         n_steps=n_steps,
         desc='Experiment 10 - no baseline')
 
-
     reward_avgs_no_baseline = dict()
     regret_averages_no_baseline = dict()
     for alpha in alphas:
@@ -1046,7 +1100,6 @@ def experiment_10(n_steps, n_trials):
     finally:
         plt.show()
 
-
     _ = plt.figure()
     legend = []
     for alpha in alphas:
@@ -1078,7 +1131,7 @@ def experiment_11(n_steps, n_trials):
     temperatures = [0.1, 0.2, 0.5, 1.0, 2.0]
     plot_root_text = 'experiment_11'
 
-    test_bed_constructor = lambda: get_test_bed(
+    test_bed_constructor = lambda: get_cont_reward_test_bed(
         reward_means=np.random.normal(0, 1., size=n_bandits).tolist(),
         reward_randomness_scale=[reward_randomness_scale] * n_bandits,
         stationary=True)
@@ -1111,7 +1164,6 @@ def experiment_11(n_steps, n_trials):
     d = os.path.join(os.getcwd(), 'plots')
     _ = mk_clear_dir(d, False)
 
-
     _ = plt.figure()
     for temp in temperatures:
         plt.plot(reward_avgs[str(temp)])
@@ -1141,9 +1193,97 @@ def experiment_11(n_steps, n_trials):
         plt.show()
 
 
-n_steps, n_trials = 1000, 2000
+######### Binary valued reward (Bernoulli TestBed) #############
 
-# experiment_1(n_steps, n_trials)
+def experiment_12(n_steps, n_trials):
+    """
+        GreedyBernoulli vs. Bernoulli Thompson Sampling on stationary Bernoulli testbed
+    """
+    n_bandits = 10  # Each bandit is triggered by one action
+    min_success = 0.1
+    max_successs = 0.9
+    plot_root_name = 'experiment_12'
+    sentinel = 'none'
+
+    true_success_rates = lambda: [float(np.random.uniform(min_success, max_successs, size=1)) for _ in range(n_bandits)]
+    test_bed_constructor = lambda: get_binary_reward_test_bed(
+        success_rates=true_success_rates(),
+        stationary=True)
+
+    greedy_policy_constructor = lambda: BernoulliGreedy(n_actions=n_bandits, initial_alpha=1., initial_beta=1.)
+
+    rewards, cummulative_rewards, cummulative_best_means, best_arms = simulate_bernoulli_testbed(
+        test_bed_constructor=test_bed_constructor,
+        policy_constructor=greedy_policy_constructor)
+
+    greedy_reward_averages = dict()
+    greedy_regret_averages = dict()
+
+    greedy_reward_averages[sentinel] = [
+        np.mean([rewards[sentinel][trial][step] for trial in range(n_trials)]) for step in range(n_steps)]
+
+    greedy_regret_averages[sentinel] = [
+        np.mean([(cummulative_best_means[sentinel][trial][step] - cummulative_rewards[sentinel][trial][step]) / step
+                 for trial in range(n_trials)])
+        for step in range(1, n_steps + 1)]
+
+
+    # Thompson sampling
+    ts_policy_constructor = lambda: BernoulliThompsonSampling(n_actions=n_bandits, initial_alpha=1., initial_beta=1.)
+
+    rewards, cummulative_rewards, cummulative_best_means, best_arms = simulate_bernoulli_testbed(
+        test_bed_constructor=test_bed_constructor,
+        policy_constructor=ts_policy_constructor)
+
+    ts_reward_averages = dict()
+    ts_regret_averages = dict()
+
+    ts_reward_averages[sentinel] = [
+        np.mean([rewards[sentinel][trial][step] for trial in range(n_trials)]) for step in range(n_steps)]
+
+    ts_regret_averages[sentinel] = [
+        np.mean([(cummulative_best_means[sentinel][trial][step] - cummulative_rewards[sentinel][trial][step]) / step
+                 for trial in range(n_trials)])
+        for step in range(1, n_steps + 1)]
+
+    d = os.path.join(os.getcwd(), 'plots')
+    _ = mk_clear_dir(d, False)
+
+    _ = plt.figure()
+    plt.plot(greedy_reward_averages[sentinel])
+    plt.plot(ts_reward_averages[sentinel])
+    plt.legend(['Greedy', 'Thompson-Sampling'])
+    plt.ylabel('Average Reward')
+    plt.xlabel('Simulation Step')
+    plt.title('Experiment 12: Bernoulli Greedy vs Thompson Sampling\n Avg. Rewards')
+    plt.grid()
+    try:
+        plt.savefig(os.path.join(d, f'rewards_{plot_root_name}.png'))
+    except:
+        print(f'Could not save rewards_{plot_root_name} plot')
+    finally:
+        plt.show()
+
+    _ = plt.figure()
+    plt.plot(greedy_regret_averages[sentinel])
+    plt.plot(ts_regret_averages[sentinel])
+    plt.legend(['Greedy', 'Thompson-Sampling'])
+    plt.ylabel('Average Regret')
+    plt.xlabel('Simulation Step')
+    plt.title('Experiment 12: Bernoulli Greedy vs Thompson Sampling\nAvg. Regrets')
+    plt.grid()
+    try:
+        plt.savefig(os.path.join(d, f'regrets_{plot_root_name}.png'))
+    except:
+        print(f'Could not save regrets_{plot_root_name} plot')
+    finally:
+        plt.show()
+
+
+
+n_steps, n_trials = 1000, 1000
+
+experiment_12(n_steps, n_trials)
 
 funs = locals()
 funs2exec = list()

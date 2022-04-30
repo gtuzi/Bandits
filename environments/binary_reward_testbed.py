@@ -3,16 +3,18 @@ from abc import ABC, abstractmethod
 import numpy as np
 from typing import List, Optional
 from functools import partial
+
+from environments.testbed import TestBed
 from tools.random_walks import BernoulliRandomWalk, RandomWalk, NormalRandomWalk
 
 
-class Bandit(ABC):
+class BinaryValueBandit(ABC):
     def __init__(self):
         self._call_count = 0
         self._rand = NotImplementedError
 
     @property
-    def success_rate(self) -> float:
+    def mean(self) -> float:
         raise NotImplementedError
 
     @property
@@ -29,22 +31,22 @@ class Bandit(ABC):
         return self.sample(n_samples)
 
 
-class StationaryBrnoulliBandit(Bandit):
+class StationaryBernoulliBandit(BinaryValueBandit):
     def __init__(self, success_rate: float):
         assert 0 <= success_rate <= 1, 'Invalid success rate'
-        super(StationaryBrnoulliBandit, self).__init__()
+        super(StationaryBernoulliBandit, self).__init__()
         self._p = success_rate
         self.rand = partial(np.random.binomial, n=1)
 
     @property
-    def success_rate(self) -> float:
+    def mean(self) -> float:
         return self._p
 
     def sample(self, n_samples: int) -> List[float]:
-        return self.rand(p=self.success_rate, size=n_samples).astype(dtype=np.float).tolist()
+        return self.rand(p=self.mean, size=n_samples).astype(dtype=np.float).tolist()
 
 
-class NonStationaryBernoulliBandit(Bandit):
+class NonStationaryBernoulliBandit(BinaryValueBandit):
     def __init__(self, initial_success_rate: float, random_walk: str = 'normal', randomness_scale: float = 0.1):
         assert 0 <= initial_success_rate <= 1, 'Invalid success rate'
         super(NonStationaryBernoulliBandit, self).__init__()
@@ -64,14 +66,16 @@ class NonStationaryBernoulliBandit(Bandit):
         else:
             raise Exception('Distribution not recognized')
 
+    @property
+    def mean(self) -> float:
+        return float(self.rw.current_mean)
+
     def sample(self, n_samples: int) -> List[float]:
         return self.rw(size=n_samples).tolist()
 
-    def success_rate(self) -> float:
-        return float(self.rw.current_mean)
 
 
-class TestBed:
+class BinaryValueRewardTestBed(TestBed):
     def __init__(
             self,
             success_rates: List,
@@ -80,9 +84,10 @@ class TestBed:
             stationary: bool = True):
 
         if stationary:
-            self.bandits = [StationaryBrnoulliBandit(success_rate=p) for p in success_rates]
+            self.bandits = [StationaryBernoulliBandit(success_rate=p) for p in success_rates]
         else:
-            assert len(success_rates) == len(reward_randomness_scales)
+            assert len(success_rates) == len(reward_randomness_scales), \
+                'Provide randomness scale for non-stationary testbed'
             self.bandits = [
                 NonStationaryBernoulliBandit(
                     initial_success_rate=p,
@@ -94,19 +99,19 @@ class TestBed:
         return self.bandits[action](n_samples=1)[0]
 
     @property
-    def best_success_rate(self) -> float:
-        return max([b.success_rate() for b in self.bandits])
+    def best_mean(self) -> float:
+        return max([b.mean for b in self.bandits])
 
     @property
     def best_arm(self) -> float:
-        success_rates = [b.success_rate() for b in self.bandits]
+        success_rates = [b.mean for b in self.bandits]
         return success_rates.index(max(success_rates))
 
 
 if __name__ == '__main__':
     p = 0.7
     N = 100
-    bandit = StationaryBrnoulliBandit(p)
+    bandit = StationaryBernoulliBandit(p)
     samples = [bandit()[0] for _ in range(N)]
     print('p, {}, p_hat: {:.4f}: '.format(p, float(np.mean(samples))))
 
