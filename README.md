@@ -4,7 +4,7 @@
 [Thompson Sampling Tutorial]: https://web.stanford.edu/~bvr/pubs/TS_Tutorial.pdf
 
 
-# Bandits
+# Non-Assocative Bandits
 Implementation of different bandits algorithms in policies operating in a k-armed test bed, as described in [Sutton & Barto RL Book]. 
 
 <img width="810" alt="Screen Shot 2022-04-25 at 1 51 36 AM" src="https://user-images.githubusercontent.com/3085599/165035548-95a25c07-6f4d-40ec-bad4-6e2bd51d6a78.png">
