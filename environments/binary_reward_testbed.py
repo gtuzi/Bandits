@@ -71,7 +71,9 @@ class NonStationaryBernoulliBandit(BinaryValueBandit):
         return float(self.rw.current_mean)
 
     def sample(self, n_samples: int) -> List[float]:
-        return self.rw(size=n_samples).tolist()
+        theta = self.rw(size=1) # The distribution parameters are random walking
+        samples = [float(np.random.uniform(0, 1) > theta) for _ in range(n_samples)]
+        return samples
 
 
 

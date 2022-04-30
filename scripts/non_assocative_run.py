@@ -1280,10 +1280,98 @@ def experiment_12(n_steps, n_trials):
         plt.show()
 
 
+def experiment_13(n_steps, n_trials):
+    """
+       Bernoulli Thompson Sampling over a stationary and non-stationary Bernoulli testbed
+    """
+    n_bandits = 10  # Each bandit is triggered by one action
+    min_success = 0.1
+    max_successs = 0.9
+    plot_root_name = 'experiment_13'
+    sentinel = 'none'
+    rand_scale = 0.02
 
-n_steps, n_trials = 1000, 1000
+    true_success_rates = lambda: [float(np.random.uniform(min_success, max_successs, size=1)) for _ in range(n_bandits)]
+    reward_randomness_scales = [rand_scale for _ in range(n_bandits)]
+    stationary_test_bed_constructor = lambda: get_binary_reward_test_bed(
+        success_rates=true_success_rates(),
+        stationary=True)
 
-experiment_12(n_steps, n_trials)
+    non_stationary_test_bed_constructor = lambda: get_binary_reward_test_bed(
+        success_rates=true_success_rates(),
+        reward_randomness_scales=reward_randomness_scales,
+        stationary=False)
+
+    policy_constructor = lambda: BernoulliThompsonSampling(n_actions=n_bandits, initial_alpha=1., initial_beta=1.)
+
+    rewards, cummulative_rewards, cummulative_best_means, best_arms = simulate_bernoulli_testbed(
+        test_bed_constructor=stationary_test_bed_constructor,
+        policy_constructor=policy_constructor)
+
+    stationary_reward_averages = dict()
+    stationary_regret_averages = dict()
+
+    stationary_reward_averages[sentinel] = [
+        np.mean([rewards[sentinel][trial][step] for trial in range(n_trials)]) for step in range(n_steps)]
+
+    stationary_regret_averages[sentinel] = [
+        np.mean([(cummulative_best_means[sentinel][trial][step] - cummulative_rewards[sentinel][trial][step]) / step
+                 for trial in range(n_trials)])
+        for step in range(1, n_steps + 1)]
+
+
+    rewards, cummulative_rewards, cummulative_best_means, best_arms = simulate_bernoulli_testbed(
+        test_bed_constructor=non_stationary_test_bed_constructor,
+        policy_constructor=policy_constructor)
+
+    non_stationary_reward_averages = dict()
+    non_stationary_regret_averages = dict()
+
+    non_stationary_reward_averages[sentinel] = [
+        np.mean([rewards[sentinel][trial][step] for trial in range(n_trials)]) for step in range(n_steps)]
+
+    non_stationary_regret_averages[sentinel] = [
+        np.mean([(cummulative_best_means[sentinel][trial][step] - cummulative_rewards[sentinel][trial][step]) / step
+                 for trial in range(n_trials)])
+        for step in range(1, n_steps + 1)]
+
+    d = os.path.join(os.getcwd(), 'plots')
+    _ = mk_clear_dir(d, False)
+
+    _ = plt.figure()
+    plt.plot(stationary_reward_averages[sentinel])
+    plt.plot(non_stationary_reward_averages[sentinel])
+    plt.legend(['Stationary', 'Non-Stationary'])
+    plt.ylabel('Average Reward')
+    plt.xlabel('Simulation Step')
+    plt.title('Experiment 13: Thompson Sampling: Stationary vs Non-Stationary Environment\n Avg. Rewards')
+    plt.grid()
+    try:
+        plt.savefig(os.path.join(d, f'rewards_{plot_root_name}.png'))
+    except:
+        print(f'Could not save rewards_{plot_root_name} plot')
+    finally:
+        plt.show()
+
+    _ = plt.figure()
+    plt.plot(stationary_regret_averages[sentinel])
+    plt.plot(non_stationary_regret_averages[sentinel])
+    plt.legend(['Stationary', 'Non-Stationary'])
+    plt.ylabel('Average Regret')
+    plt.xlabel('Simulation Step')
+    plt.title('Experiment 13: Thompson Sampling: Stationary vs Non-Stationary Environment\nAvg. Regrets')
+    plt.grid()
+    try:
+        plt.savefig(os.path.join(d, f'regrets_{plot_root_name}.png'))
+    except:
+        print(f'Could not save regrets_{plot_root_name} plot')
+    finally:
+        plt.show()
+
+
+n_steps, n_trials = 1000, 500
+
+experiment_13(n_steps, n_trials)
 
 funs = locals()
 funs2exec = list()
