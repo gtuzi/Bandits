@@ -1,9 +1,11 @@
 
 [Sutton & Barto RL Book]: http://incompleteideas.net/book/RLbook2020.pdf
 [Algorithms]: https://arxiv.org/pdf/1402.6028.pdf
+[Thompson Sampling Tutorial]: https://web.stanford.edu/~bvr/pubs/TS_Tutorial.pdf
 
-# Bandits
-Implementation of different bandits algorithms in policies operating in a k-armed test bed, as described in [Sutton & Barto RL Book]. 
+
+# Non-Assocative Bandits
+Implementation of different bandits algorithms in policies operating in a k-armed test bed. 
 
 <img width="810" alt="Screen Shot 2022-04-25 at 1 51 36 AM" src="https://user-images.githubusercontent.com/3085599/165035548-95a25c07-6f4d-40ec-bad4-6e2bd51d6a78.png">
 
@@ -92,5 +94,36 @@ Softmax methods are based on Luce’s axiom of choice (1959) and pick each arm w
 * Experiment 11: Run SoftmaxExploration policy over varying fixed temperatures
 
 <img src="/scripts/plots/rewards_experiment_11.png" width="400" height="300" />|
+
+---
+
+## Thompson Sampling
+_Dithering_ is a common approach to exploration that operates through randomly perturbing actions that would be selected by a greedy algorithm, such as eps-greedy. Eps-greedy exploration would allocate an equal number of experimental trials to each action. Though only half of the exploratory actions are wasted in this example, the issue is exacerbated as the number of possible actions increases. Thompson Sampling provides an alternative to dithering that more intelligently allocates exploration effort. 
+
+Let the agent begin with an independent prior belief over each _θk_. Take these priors to be beta-distributed with parameters _α = (α1, . . . , αK)_ and _β ∈ (β1, . . . , βK)_. In particular, for each action _k_, the prior probability density function of _θk_ is
+
+<img width="666" alt="Screen Shot 2022-04-30 at 4 31 21 PM" src="https://user-images.githubusercontent.com/3085599/166123362-9386e771-d62a-453f-ba2b-3710c2a85b6b.png">
+
+As observations are gathered, the distribution is updated according to Bayes’ rule. It is particularly convenient to work with beta distributions because of their conjugacy properties. In particular, each action’s posterior distribution is also beta with parameters that can be updated according to a simple rule:
+
+<img width="816" alt="Screen Shot 2022-04-30 at 4 34 35 PM" src="https://user-images.githubusercontent.com/3085599/166123428-9d29ebbf-42a7-47f1-b23d-733667b97685.png">
+
+Note that for the special case of _αk_ = _βk_ = 1, the prior _p(θk)_ is uniform over [0, 1]. Note that only the parameters of a __selected action__ are updated. A beta distribution with parameters _(αk, βk)_ has mean _αk/(αk + βk)_, and the distribution becomes more concentrated as _αk + βk_ grows.
+
+___Algorithm 1___ presents a __greedy__ algorithm for the beta-Bernoulli bandit. In each time period _t_, the algorithm generates an estimate _ˆθk = αk/(αk + βk)_, equal to its current expectation of the success probability _θk_. The action _xt_ with the largest estimate _ˆθk_ is then applied, after which a reward _rt_ is observed and the distribution parameters _αxt_ and _βxt_ are updated.
+
+___Algorithm 2___  - Thompson Sampling - is specialized to the case of a beta-Bernoulli bandit, and it is similart to _Algorithm 1_. The only difference is that the success probability estimate _ˆθk_ is _randomly_ sampled from the posterior distribution, which is a beta distribution with parameters _αk_ and _βk_, rather than taken to be the expectation _αk/(αk+βk)_.
+
+
+<img width="1134" alt="Screen Shot 2022-04-30 at 4 43 52 PM" src="https://user-images.githubusercontent.com/3085599/166123621-c67671d7-2178-4c98-8ecb-ac3179621c76.png">
+
+Refer to [Thompson Sampling Tutorial] for details.
+_Note:_ for the TS experiments, a Bernoulli test bed was used, with different success rates for each arm.
+
+* Experiment 11: GreedyBernoulli vs. Bernoulli Thompson Sampling on stationary Bernoulli testbed
+* Experiment 12: Bernoulli Thompson Sampling over a stationary and non-stationary Bernoulli testbed
+
+<img src="/scripts/plots/rewards_experiment_12.png" width="400" height="300" />|<img src="/scripts/plots/rewards_experiment_13.png" width="400" height="300" />
+<img src="/scripts/plots/regrets_experiment_12.png" width="400" height="300" />|<img src="/scripts/plots/regrets_experiment_13.png" width="400" height="300" />
 
 ---
