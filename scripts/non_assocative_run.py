@@ -5,7 +5,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from joblib import Parallel, delayed
 
-from environments.testbed import TestBed
+from environments.testbed import NonAssocativeTestBed
 from utils import mk_clear_dir
 
 from environments.continuous_reward_testbed import ContinuousValueRewardTestBed
@@ -48,7 +48,7 @@ def get_binary_reward_test_bed(
 
 
 def simulate_epsilon_greedy(
-        test_bed_constructor: Callable[[], TestBed],
+        test_bed_constructor: Callable[[], NonAssocativeTestBed],
         policy_constructor: Callable[[float, ], EpsGreedyPolicy],
         epsilons: List[float],
         n_trials: int,
@@ -77,7 +77,7 @@ def simulate_epsilon_greedy(
 
 
 def simulate_ucb(
-        test_bed_constructor: Callable[[], TestBed],
+        test_bed_constructor: Callable[[], NonAssocativeTestBed],
         policy_constructor: Callable[[float, ], UCB1Policy],
         uncertainty_coefficients: List[float],
         n_trials: int,
@@ -106,7 +106,7 @@ def simulate_ucb(
 
 
 def simulate_bernoulli_testbed(
-        test_bed_constructor: Callable[[], TestBed],
+        test_bed_constructor: Callable[[], NonAssocativeTestBed],
         policy_constructor: Callable[[], BernoulliPolicy],):
 
     sentinel = 'none'
@@ -132,7 +132,7 @@ def simulate_bernoulli_testbed(
 
 
 def simulate_paramterized_policy(
-        test_bed_constructor: Callable[[], TestBed],
+        test_bed_constructor: Callable[[], NonAssocativeTestBed],
         policy_constructor: Callable[[float, ], Policy],
         varying_parameters: List[float],
         n_trials: int,
