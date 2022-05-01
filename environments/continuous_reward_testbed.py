@@ -3,7 +3,7 @@ import numpy as np
 from typing import List
 from functools import partial
 
-from environments.testbed import TestBed
+from environments.testbed import NonAssocativeTestBed
 from tools.random_walks import NormalRandomWalk, BernoulliRandomWalk, RandomWalk
 
 
@@ -65,7 +65,7 @@ class NonStationaryRewardBandit(ContinuousRewardBandit):
         return float(self.rw.sigma)
 
 
-class ContinuousValueRewardTestBed(TestBed):
+class ContinuousValueRewardTestBed(NonAssocativeTestBed):
     def __init__(self, reward_means: List, reward_randomness_scales: List, dist='normal', stationary: bool = True):
         assert len(reward_means) == len(reward_randomness_scales)
 

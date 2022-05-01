@@ -4,7 +4,7 @@ import numpy as np
 from typing import List, Optional
 from functools import partial
 
-from environments.testbed import TestBed
+from environments.testbed import NonAssocativeTestBed
 from tools.random_walks import BernoulliRandomWalk, RandomWalk, NormalRandomWalk
 
 
@@ -77,7 +77,7 @@ class NonStationaryBernoulliBandit(BinaryValueBandit):
 
 
 
-class BinaryValueRewardTestBed(TestBed):
+class BinaryValueRewardTestBed(NonAssocativeTestBed):
     def __init__(
             self,
             success_rates: List,

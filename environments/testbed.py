@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-class TestBed(ABC):
+class NonAssocativeTestBed(ABC):
     @property
     @abstractmethod
     def best_mean(self) -> float:
