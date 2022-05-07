@@ -19,7 +19,7 @@ from value_functions.nonassocative_value_functions import (
     QMonteCarlo,
     QCoefficientMovingAverage)
 
-from policies.nonassocative_policies import (
+from policies.nonassociative_policies import (
     Policy,
     EpsGreedyPolicy,
     UCB1Policy,

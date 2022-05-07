@@ -47,21 +47,21 @@ class User:
     # Demographics
     YOUNG = 0
     OLD = 1
+    UNKNOWN = 2
 
     # No-action, Visit, Purchase
 
-    PASSIVE = [0.90, 0.08, 0.02]
-    # PASSIVE = [1.0, 0.0, 0.0]
+    PASSIVE = [0.90, 0.08, 0.02] # User most likely to do nothing
+    # PASSIVE = [1.0, 0.0, 0.0] # Deterministic do nothing
 
-    INTERESTED = [0.80, 0.15, 0.05]
-    # INTERESTED = [0, 1.0, 0.0]
+    INTERESTED = [0.80, 0.15, 0.05] # Increased interest in visits, and slightly higher purchasing
+    # INTERESTED = [0, 1.0, 0.0] # Deterministic visit
 
-    EAGER = [0.70, 0.08, 0.22]
-
-    # EAGER = [0.0, 0.0, 1.0]
+    EAGER = [0.70, 0.08, 0.22] # The most likely to purchase
+    # EAGER = [0.0, 0.0, 1.0]  # Deterministic purchase
 
     def __init__(self, demographic: int, noise: float = 0.0):
-        assert demographic in [User.YOUNG, User.OLD]
+        assert demographic in [User.YOUNG, User.OLD, User.UNKNOWN]
         self.demographic = demographic
         self.noise = noise
         self.reset()
@@ -69,119 +69,115 @@ class User:
     @property
     def state(self) -> np.ndarray:
         self.set_offers_received_sequence()
-        return np.concatenate([self.offers_received_sequence, [self.demographic]])
+        return np.concatenate([self.positive_offers_received_sequence, [self.demographic]])
 
     def reset(self):
-        self.actions_received = list()
-        self.offers_received_sequence: np.ndarray = np.array([])
-        self._p = User.PASSIVE
+        self.all_offers_received = list()
+        self.positive_offers_received_sequence: np.ndarray = np.array([])
+        self._behavior_probabilities = User.PASSIVE
 
     def _parse_offer_seq(self, f: np.ndarray) -> np.ndarray:
-        """ Get the sequence of last 3 positive actions"""
+        """ Get the sequence of last 3 positive (i.e. non-no_action) actions"""
         if len(f) > 0:
             return f[np.where(f > Actions.NO_ACTION)]
         else:
             return np.array([])
 
     def set_offers_received_sequence(self):
-        self.offers_received_sequence = self._parse_offer_seq(np.array(self.actions_received))
+        self.positive_offers_received_sequence = self._parse_offer_seq(np.array(self.all_offers_received))
 
         # Get the sequence of the last, at-most 3, positive actions. Padd with no-actions
-        K = 3 - self.offers_received_sequence[-3:].shape[0]
+        K = 3 - self.positive_offers_received_sequence[-3:].shape[0]
 
         offers_received_sequence_ = np.concatenate(
-            (self.offers_received_sequence[-3:],
+            (self.positive_offers_received_sequence[-3:],
              Actions.NO_ACTION * np.ones(K))
         )
 
         assert len(offers_received_sequence_) == 3
 
-        self.offers_received_sequence = offers_received_sequence_
+        self.positive_offers_received_sequence = offers_received_sequence_
 
     def _update_young(self):
+        """ Update behavior probabilities for young demographic """
         self.set_offers_received_sequence()
 
         if (  # Saw an ad --> large offer -> eager
-                (self.offers_received_sequence[0] == Actions.AD and
-                 self.offers_received_sequence[1] == Actions.LARGE_OFFER) or
-                (self.offers_received_sequence[1] == Actions.AD and
-                 self.offers_received_sequence[2] == Actions.LARGE_OFFER) or
-                (self.offers_received_sequence[0] == Actions.AD and
-                 self.offers_received_sequence[2] == Actions.LARGE_OFFER)
+                (self.positive_offers_received_sequence[0] == Actions.AD and
+                 self.positive_offers_received_sequence[1] == Actions.LARGE_OFFER) or
+                (self.positive_offers_received_sequence[1] == Actions.AD and
+                 self.positive_offers_received_sequence[2] == Actions.LARGE_OFFER) or
+                (self.positive_offers_received_sequence[0] == Actions.AD and
+                 self.positive_offers_received_sequence[2] == Actions.LARGE_OFFER)
         ):
-            self._p = User.EAGER
+            self._behavior_probabilities = User.EAGER
         elif (
                 # Saw an ad --> small offer -> interested
-                (self.offers_received_sequence[0] == Actions.AD and
-                 self.offers_received_sequence[1] == Actions.SMALL_OFFER) or
-                (self.offers_received_sequence[1] == Actions.AD and
-                 self.offers_received_sequence[2] == Actions.SMALL_OFFER) or
-                (self.offers_received_sequence[0] == Actions.AD and
-                 self.offers_received_sequence[2] == Actions.SMALL_OFFER)
+                (self.positive_offers_received_sequence[0] == Actions.AD and
+                 self.positive_offers_received_sequence[1] == Actions.SMALL_OFFER) or
+                (self.positive_offers_received_sequence[1] == Actions.AD and
+                 self.positive_offers_received_sequence[2] == Actions.SMALL_OFFER) or
+                (self.positive_offers_received_sequence[0] == Actions.AD and
+                 self.positive_offers_received_sequence[2] == Actions.SMALL_OFFER)
         ):
-            self._p = User.INTERESTED
+            self._behavior_probabilities = User.INTERESTED
         else:
             # Passive user
-            self._p = User.PASSIVE  # default behavior
+            self._behavior_probabilities = User.PASSIVE  # default behavior
 
     def _update_old(self):
-        self.set_offers_received_sequence()
-
-        if (  # Saw an ad --> large offer -> eager
-                (self.offers_received_sequence[0] == Actions.AD and
-                 self.offers_received_sequence[1] == Actions.LARGE_OFFER) or
-                (self.offers_received_sequence[1] == Actions.AD and
-                 self.offers_received_sequence[2] == Actions.LARGE_OFFER) or
-                (self.offers_received_sequence[0] == Actions.AD and
-                 self.offers_received_sequence[2] == Actions.LARGE_OFFER)
-        ):
-            self._p = User.EAGER
-        else:
-            # Passive user
-            self._p = User.PASSIVE  # default behavior
-
-    def _update_state(self):
+        """ Update behavior probabilities for old demographic """
         self.set_offers_received_sequence()
         if (  # Saw an ad --> large offer -> eager
-                (self.offers_received_sequence[0] == Actions.AD and
-                 self.offers_received_sequence[1] == Actions.LARGE_OFFER) or
-                (self.offers_received_sequence[1] == Actions.AD and
-                 self.offers_received_sequence[2] == Actions.LARGE_OFFER) or
-                (self.offers_received_sequence[0] == Actions.AD and
-                 self.offers_received_sequence[2] == Actions.LARGE_OFFER)
+                (self.positive_offers_received_sequence[0] == Actions.AD and
+                 self.positive_offers_received_sequence[1] == Actions.LARGE_OFFER) or
+                (self.positive_offers_received_sequence[1] == Actions.AD and
+                 self.positive_offers_received_sequence[2] == Actions.LARGE_OFFER) or
+                (self.positive_offers_received_sequence[0] == Actions.AD and
+                 self.positive_offers_received_sequence[2] == Actions.LARGE_OFFER)
         ):
-            self._p = User.EAGER
-        elif ((self.offers_received_sequence[0] == Actions.AD) or
-              (self.offers_received_sequence[1] == Actions.AD) or
-              (self.offers_received_sequence[2] == Actions.AD)):
-            self._p = User.INTERESTED
+            self._behavior_probabilities = User.EAGER
         else:
             # Passive user
-            self._p = User.PASSIVE  # default behavior
+            self._behavior_probabilities = User.PASSIVE  # default behavior
+
+    def _update_unknown(self):
+        """ Update behavior for unknown demographic """
+        self.set_offers_received_sequence()
+        if (  # Saw an ad --> large offer -> eager
+                (self.positive_offers_received_sequence[0] == Actions.AD and
+                 self.positive_offers_received_sequence[1] == Actions.LARGE_OFFER) or
+                (self.positive_offers_received_sequence[1] == Actions.AD and
+                 self.positive_offers_received_sequence[2] == Actions.LARGE_OFFER) or
+                (self.positive_offers_received_sequence[0] == Actions.AD and
+                 self.positive_offers_received_sequence[2] == Actions.LARGE_OFFER)
+        ):
+            self._behavior_probabilities = User.INTERESTED
+        else:
+            # Passive user
+            self._behavior_probabilities = User.PASSIVE  # default behavior
 
     def _update_behavior_state(self):
-        # if self.demographic == User.YOUNG:
-        #     self._update_young()
-        # else:
-        #     self._update_old()
-
-        self._update_state()
+        if self.demographic == User.YOUNG:
+            self._update_young()
+        elif self.demographic == User.OLD:
+            self._update_old()
+        else:
+            self._update_unknown()
 
     def make_offer(self, offer: int):
         """ Send out an offer (action), e.g. via e-mail """
-        self.actions_received.append(offer)
+        self.all_offers_received.append(offer)
 
     def step(self) -> int:
-        """ The simulation step. Observe user behavior at each simulation step """
+        """ The simulation simulation_step. Observe user behavior at each simulation simulation_step """
         self._update_behavior_state()
-        p = self._p
+        p = self._behavior_probabilities
 
-        # add some eagerness noise
+        # add some eagerness noise. You never know !!
         if np.random.binomial(1, self.noise) > 0:
             p = User.EAGER
 
-        if self._p == User.INTERESTED:
-            print('')
         behavior = int(np.random.choice([User.NO_ACTION, User.VISIT, User.PURCHASE], p=p, size=(1,)))
 
         return behavior
@@ -198,7 +194,7 @@ class AdvertisingTestBed:
 
     def __init__(self, n_users, noise: float = 0.01):
         assert 0 <= noise <= 1.
-        demographics = np.random.randint(User.YOUNG, User.OLD + 1, size=n_users).tolist()
+        demographics = np.random.randint(User.YOUNG, User.UNKNOWN + 1, size=n_users).tolist()
         self.users = [User(demo, noise=noise) for demo in demographics]
         self.purchases = np.zeros(shape=(n_users,))
         self.behavior_trajectories = list()
@@ -215,10 +211,10 @@ class AdvertisingTestBed:
         """ Take agent's offer, generate the state and the rewards. Reset rewards """
         _ = [u.make_offer(a) for u, a in zip(self.users, offers)]
         states, rewards = self.get_state_rewards()
-        # self.purchases = np.zeros_like(self.purchases)  # Clear on agent action
+        self.purchases = np.zeros_like(self.purchases)  # Purchases in one transition
         return states, rewards
 
-    def step(self):
+    def simulation_step(self):
         behaviors = np.array([u.step() for u in self.users])
         self.purchases += (behaviors == User.PURCHASE).astype(int)
         self.behavior_trajectories.append(behaviors)
@@ -253,7 +249,7 @@ if __name__ == '__main__':
             rewards.extend(r)
             actions.append(offers[tsimu])
         else:
-            testbed.step()
+            testbed.simulation_step()
 
     visualize_trajectories(np.array(testbed.behavior_trajectories).T)
     visualize_trajectories(np.array(actions).T)
